@@ -38,7 +38,7 @@ public class UploadController {
     public Result deleteBlogImg(@RequestParam("name") String filename) {
         File file = new File(SystemConstants.IMAGE_UPLOAD_DIR, filename);
         if (file.isDirectory()) {
-            return Result.fail("错误的文    件名称");
+            return Result.fail("错误的文件名称");
         }
         FileUtil.del(file);
         return Result.ok();

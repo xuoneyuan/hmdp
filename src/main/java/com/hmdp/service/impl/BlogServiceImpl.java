@@ -14,6 +14,7 @@ import com.hmdp.mapper.BlogMapper;
 import com.hmdp.service.IBlogService;
 import com.hmdp.service.IFollowService;
 import com.hmdp.service.IUserService;
+import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.UserHolder;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -91,6 +92,30 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         String key = "blog:liked:" + blog.getId();
         Double score = stringRedisTemplate.opsForZSet().score(key, userId.toString());
         blog.setIsLike(score != null);
+    }
+
+
+    @Override
+    public Result queryBlogLikesById(Long id) {
+        String key = RedisConstants.BLOG_LIKED_KEY + id;
+        //查询top5的点赞用户
+        Set<String> top5 = stringRedisTemplate.opsForZSet().range(key, 0, 6);
+        if (top5==null||top5.isEmpty()){
+            return Result.ok(Collections.emptyList());
+        }
+        //解析出用户id
+        List<Long> userIds = top5.stream().map(Long::valueOf).collect(Collectors.toList());
+        String join = StrUtil.join(",", userIds);
+        //根据id查询用户
+        List<UserDTO> userDTOS = userService.lambdaQuery()
+                .in(User::getId,userIds)
+                .last("order by field(id,"+join+")")
+                .list()
+                .stream().map(user ->
+                        BeanUtil.copyProperties(user, UserDTO.class)
+                ).collect(Collectors.toList());
+        //返回
+        return Result.ok(userDTOS);
     }
 
     @Override
