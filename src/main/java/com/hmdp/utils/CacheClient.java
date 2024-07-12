@@ -19,12 +19,6 @@ import java.util.function.Function;
 
 import static com.hmdp.utils.RedisConstants.*;
 
-/**
- * redis工具
- *
- * @author CHEN
- * @date 2022/10/08
- */
 @Slf4j
 @Component
 public class CacheClient {
