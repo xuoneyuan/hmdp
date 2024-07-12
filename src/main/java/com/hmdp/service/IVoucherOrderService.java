@@ -32,7 +32,6 @@ public interface IVoucherOrderService extends IService<VoucherOrder> {
      * @param voucherId 券id
      * @return {@link Result}
      */
-    Result getResult(Long voucherId);
 
     /**
      * 创建优惠券订单
@@ -42,4 +41,5 @@ public interface IVoucherOrderService extends IService<VoucherOrder> {
     @NotNull
     @Transactional(rollbackFor = Exception.class)
     void createVoucherOrder(VoucherOrder voucherOrder);
+
 }

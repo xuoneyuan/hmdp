@@ -32,7 +32,7 @@ import java.util.concurrent.*;
  */
 @Service
 @Slf4j
-public abstract class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, VoucherOrder> implements IVoucherOrderService {
+public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, VoucherOrder> implements IVoucherOrderService {
 
     @Resource
     private ISeckillVoucherService seckillVoucherService;
