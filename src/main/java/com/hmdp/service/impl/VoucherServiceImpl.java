@@ -7,11 +7,16 @@ import com.hmdp.entity.Voucher;
 import com.hmdp.mapper.VoucherMapper;
 import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherService;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import java.time.ZoneId;
 import javax.annotation.Resource;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+
+import static com.hmdp.utils.RedisConstants.SECKILL_STOCK_KEY;
 
 /**
  * <p>
@@ -26,6 +31,8 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
 
     @Resource
     private ISeckillVoucherService seckillVoucherService;
+    @Resource
+    private RedisTemplate redisTemplate;
 
     @Override
     public Result queryVoucherOfShop(Long shopId) {
@@ -38,14 +45,25 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
     @Override
     @Transactional
     public void addSeckillVoucher(Voucher voucher) {
-        // 保存优惠券
+        // 保存优惠券到MySQL
         save(voucher);
         // 保存秒杀信息
-        SeckillVoucher seckillVoucher = new SeckillVoucher();
-        seckillVoucher.setVoucherId(voucher.getId());
-        seckillVoucher.setStock(voucher.getStock());
-        seckillVoucher.setBeginTime(voucher.getBeginTime());
-        seckillVoucher.setEndTime(voucher.getEndTime());
+        SeckillVoucher seckillVoucher = new SeckillVoucher()
+                .setVoucherId(voucher.getId())
+                .setStock(voucher.getStock())
+                .setBeginTime(voucher.getBeginTime())
+                .setEndTime(voucher.getEndTime());
         seckillVoucherService.save(seckillVoucher);
+
+
+        ZoneId zoneId = ZoneId.systemDefault();
+        //保存秒杀券到redis里面
+        Map<String,Object> voucherMap = new HashMap<>();
+        voucherMap.put("id",voucher.getId());
+        voucherMap.put("stock", voucher.getStock());
+        voucherMap.put("beginTime", voucher.getBeginTime().atZone(zoneId).toInstant().toEpochMilli());  // 转换为时间戳（以毫秒为单位）
+        voucherMap.put("endTime", voucher.getEndTime().atZone(zoneId).toInstant().toEpochMilli());  // 转换为时间戳（以毫秒为单位）
+
+        redisTemplate.opsForHash().putAll(SECKILL_STOCK_KEY + voucher.getId(),voucherMap);
     }
 }
