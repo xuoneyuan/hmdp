@@ -22,6 +22,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/shop-type")
 public class ShopTypeController {
+
     @Resource
     private IShopTypeService typeService;
 

@@ -277,6 +277,15 @@ CREATE TABLE `tb_voucher_order`  (
   PRIMARY KEY (`id`) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Compact;
 
+DROP TABLE IF EXISTS `tb_common_voucher`;
+CREATE TABLE `tb_common_voucher`  (
+                                      `voucher_id` bigint(20) UNSIGNED NOT NULL COMMENT '关联的优惠券的id',
+                                      `stock` int(8) NOT NULL COMMENT '库存',
+                                      `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                                      `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                                      PRIMARY KEY (`voucher_id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '普通优惠券表' ROW_FORMAT = Compact;
+
 -- ----------------------------
 -- Records of tb_voucher_order
 -- ----------------------------

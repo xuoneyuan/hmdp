@@ -37,7 +37,7 @@ public class ShopTypeServiceImpl extends ServiceImpl<ShopTypeMapper, ShopType> i
         //redis存在数据
         if (typeListSize!=null&&typeListSize!=0){
             List<String> typeJsonList = stringRedisTemplate.opsForList().range(typeKey, 0, typeListSize-1);
-            List<ShopType> typeList=new ArrayList<>();
+            List<ShopType> typeList = new ArrayList<>();
             for (String typeJson : typeJsonList) {
                 typeList.add(JSONUtil.toBean(typeJson,ShopType.class));
             }

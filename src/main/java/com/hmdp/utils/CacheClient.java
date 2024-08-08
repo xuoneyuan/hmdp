@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
+import javax.annotation.Resource;
 import java.time.LocalDateTime;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -22,6 +23,7 @@ import static com.hmdp.utils.RedisConstants.*;
 @Slf4j
 @Component
 public class CacheClient {
+
     private final StringRedisTemplate stringRedisTemplate;
 
     @Autowired
