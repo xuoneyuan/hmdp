@@ -20,7 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 public interface IVoucherOrderService extends IService<VoucherOrder> {
 
 
-    Result seckillVoucher(Long voucherId,int buyNumber);
+    Result secKillVoucher(Long voucherId,int buyNumber);
 
     void createVoucherOrder(VoucherOrder voucherOrder);
 
@@ -28,6 +28,5 @@ public interface IVoucherOrderService extends IService<VoucherOrder> {
 
     Result commonVoucher(Long voucherId, int buyNumber);
 
-    Result limitVoucher(Long voucherId, int buyNumber);
 
 }

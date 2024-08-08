@@ -118,7 +118,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     }
     @Override
-    public Result seckillVoucher(Long voucherId, int buyNumber) {
+    public Result secKillVoucher(Long voucherId, int buyNumber) {
         Long userId = UserHolder.getUser().getId();
         long currentTime = LocalDateTime.now().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
         long orderId = redisIdWorker.nextId("order");
@@ -234,10 +234,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     }
 
-    @Override
-    public Result limitVoucher(Long voucherId, int buyNumber) {
-        return null;
-    }
 
 
 }
