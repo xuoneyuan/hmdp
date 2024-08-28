@@ -83,5 +83,6 @@ public class UserInfo implements Serializable {
      */
     private LocalDateTime updateTime;
 
+    private Integer userLikeCount;
 
 }

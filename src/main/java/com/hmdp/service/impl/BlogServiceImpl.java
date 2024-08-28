@@ -1,33 +1,45 @@
 package com.hmdp.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.lang.hash.Hash;
 import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.ScrollResult;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
+import com.hmdp.entity.Event;
 import com.hmdp.entity.Follow;
 import com.hmdp.entity.User;
+import com.hmdp.event.KafkaLikeProducer;
 import com.hmdp.mapper.BlogMapper;
 import com.hmdp.service.IBlogService;
 import com.hmdp.service.IFollowService;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.RedisConstants;
+import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.UserHolder;
+import jdk.jpackage.internal.Log;
+import net.bytebuddy.description.field.FieldDescription;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import com.github.benmanes.caffeine.cache.CacheLoader;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.LoadingCache;
 
+import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import static com.hmdp.utils.KafkaConstants.TOPIC_LIKE_BEHAVIOR;
 import static com.hmdp.utils.RedisConstants.BLOG_LIKED_KEY;
 import static com.hmdp.utils.RedisConstants.FEED_KEY;
 
@@ -49,6 +61,28 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 
     @Resource
     private IFollowService followService;
+
+    @Resource
+    private RedisIdWorker redisIdWorker;
+
+    @Resource
+    private KafkaLikeProducer kafkaLikeProducer;
+
+    @Resource
+    private LoadingCache<String,String> cache;
+
+    @PostConstruct
+    public LoadingCache<String,String> init(){
+        return Caffeine.newBuilder()
+                .maximumSize(100)
+                .expireAfterWrite(2, TimeUnit.HOURS)
+                .build(new CacheLoader<String, String>() {
+                    @Override
+                    public String load(String s) throws Exception {
+                        return null;
+                    }
+                });
+    }
 
     @Override
     public Result queryHotBlog(Integer current) {
@@ -73,7 +107,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         if (blog == null) {
             return Result.fail("笔记不存在！");
         }
-        // 2.查询blog有关的用户
+        // 2.查询blog有关的用户f
         queryBlogUser(blog);
         // 3.查询blog是否被点赞
         isBlogLiked(blog);
@@ -91,44 +125,27 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         // 2.判断当前登录用户是否已经点赞
         String key = "blog:liked:" + blog.getId();
         Double score = stringRedisTemplate.opsForZSet().score(key, userId.toString());
-        blog.setIsLike(score != null);
+        //blog.setType();
     }
 
 
-    @Override
-    public Result queryBlogLikesById(Long id) {
-        String key = RedisConstants.BLOG_LIKED_KEY + id;
-        //查询top5的点赞用户
-        Set<String> top5 = stringRedisTemplate.opsForZSet().range(key, 0, 6);
-        if (top5==null||top5.isEmpty()){
-            return Result.ok(Collections.emptyList());
-        }
-        //解析出用户id
-        List<Long> userIds = top5.stream().map(Long::valueOf).collect(Collectors.toList());
-        String join = StrUtil.join(",", userIds);
-        //根据id查询用户
-        List<UserDTO> userDTOS = userService.lambdaQuery()
-                .in(User::getId,userIds)
-                .last("order by field(id,"+join+")")
-                .list()
-                .stream().map(user ->
-                        BeanUtil.copyProperties(user, UserDTO.class)
-                ).collect(Collectors.toList());
-        //返回
-        return Result.ok(userDTOS);
-    }
 
     @Override
-    public Result likeBlog(Long id) {
+    public Result likeBlog(Blog blog) {
         // 1.获取登录用户
         Long userId = UserHolder.getUser().getId();
         // 2.判断当前登录用户是否已经点赞
-        String key = BLOG_LIKED_KEY + id;
+        Long blogId = blog.getBlogId();
+        Integer type = blog.getType();
+        String key = BLOG_LIKED_KEY + blogId;
         Double score = stringRedisTemplate.opsForZSet().score(key, userId.toString());
         if (score == null) {
             // 3.如果未点赞，可以点赞
             // 3.1.数据库点赞数 + 1
-            boolean isSuccess = update().setSql("liked = liked + 1").eq("id", id).update();
+            boolean isSuccess = update()
+                    .setSql("likeCount = likeCount + 1")
+                    .eq("blogId", blogId)
+                    .update();
             // 3.2.保存用户到Redis的set集合  zadd key value score
             if (isSuccess) {
                 stringRedisTemplate.opsForZSet().add(key, userId.toString(), System.currentTimeMillis());
@@ -136,35 +153,34 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         } else {
             // 4.如果已点赞，取消点赞
             // 4.1.数据库点赞数 -1
-            boolean isSuccess = update().setSql("liked = liked - 1").eq("id", id).update();
+            boolean isSuccess = update()
+                    .setSql("likeCount = likeCount  - 1")
+                    .eq("blogId", blogId)
+                    .update();
             // 4.2.把用户从Redis的set集合移除
             if (isSuccess) {
                 stringRedisTemplate.opsForZSet().remove(key, userId.toString());
             }
         }
+        Long likedId = redisIdWorker.nextId("like_behavior");
+        sendLikeBehaviorMsg(likedId,blogId,userId,type);
+
         return Result.ok();
     }
 
-    @Override
-    public Result queryBlogLikes(Long id) {
-        String key = BLOG_LIKED_KEY + id;
-        // 1.查询top5的点赞用户 zrange key 0 4
-        Set<String> top5 = stringRedisTemplate.opsForZSet().range(key, 0, 4);
-        if (top5 == null || top5.isEmpty()) {
-            return Result.ok(Collections.emptyList());
-        }
-        // 2.解析出其中的用户id
-        List<Long> ids = top5.stream().map(Long::valueOf).collect(Collectors.toList());
-        String idStr = StrUtil.join(",", ids);
-        // 3.根据用户id查询用户 WHERE id IN ( 5 , 1 ) ORDER BY FIELD(id, 5, 1)
-        List<UserDTO> userDTOS = userService.query()
-                .in("id", ids).last("ORDER BY FIELD(id," + idStr + ")").list()
-                .stream()
-                .map(user -> BeanUtil.copyProperties(user, UserDTO.class))
-                .collect(Collectors.toList());
-        // 4.返回
-        return Result.ok(userDTOS);
+    private void sendLikeBehaviorMsg(Long likedId,Long blogId,Long userId,Integer type){
+        HashMap<String, Object> data = new HashMap<>();
+        data.put("likedId",likedId);
+        data.put("blogId",blogId);
+        data.put("userId",userId);
+        data.put("type",type);
+        Event event = new Event()
+                .setTopic(TOPIC_LIKE_BEHAVIOR)
+                .setUserId(userId)
+                .setData(data);
+        kafkaLikeProducer.publishEvent(event);
     }
+
 
     @Override
     public Result saveBlog(Blog blog) {
@@ -237,6 +253,43 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         r.setMinTime(minTime);
 
         return Result.ok(r);
+    }
+
+    @Override
+    @Async
+    public CompletableFuture<Void> updateBatchCount(List<Blog> likeBlogCountList) {
+        for (Blog likeBlogCount : likeBlogCountList) {
+            LambdaQueryWrapper<Blog> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(Blog::getBlogId, likeBlogCount.getBlogId());
+            Blog one = this.getOne(wrapper);
+
+            if(one!=null){
+                one.setLiked(one.getLiked()+likeBlogCount.getLiked());
+                this.updateById(one);
+            }else{
+                this.save(likeBlogCount);
+            }
+
+        }
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override
+    public Map<Long, Integer> queryBatchCount(List<Long> blogIds) {
+        HashMap<Long, Integer> counts = new HashMap<>();
+        List<Long> queryIds = new ArrayList<>();
+        for (Long blogId : blogIds) {
+
+            String count = cache.get("blog_like_count:"+blogId);
+            if(count!=null){
+                counts.put(blogId, Integer.valueOf(count));
+            }else{
+                queryIds.add(blogId);
+            }
+        }
+        counts.putAll(this.queryBatchCount(queryIds));
+
+        return counts;
     }
 
     private void queryBlogUser(Blog blog) {

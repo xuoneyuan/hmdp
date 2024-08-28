@@ -54,7 +54,7 @@ public class Blog implements Serializable {
      * 是否点赞过了
      */
     @TableField(exist = false)
-    private Boolean isLike;
+    private Integer type;
 
     /**
      * 标题
@@ -91,5 +91,8 @@ public class Blog implements Serializable {
      */
     private LocalDateTime updateTime;
 
+    private Long behaviorId;
+
+    private Long blogId;
 
 }

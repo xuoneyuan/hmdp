@@ -33,10 +33,10 @@ public class BlogController {
         return blogService.saveBlog(blog);
     }
 
-    @PutMapping("/like/{id}")
-    public Result likeBlog(@PathVariable("id") Long id) {
+    @PutMapping("/like/{blogId}")
+    public Result likeBlog(@PathVariable("blogId") Blog blog) {
         // 修改点赞数量
-        return blogService.likeBlog(id);
+        return blogService.likeBlog(blog);
     }
 
     @GetMapping("/of/me")
@@ -61,10 +61,6 @@ public class BlogController {
         return blogService.queryBlogById(id);
     }
 
-    @GetMapping("/likes/{id}")
-    public Result queryBlogLikesById(@PathVariable("id") Long id) {
-        return blogService.queryBlogLikesById(id);
-    }
 
     @GetMapping("/of/user")
     public Result queryBlogByUserId(@RequestParam(value = "current",defaultValue = "1")Integer current,

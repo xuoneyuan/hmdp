@@ -3,6 +3,11 @@ package com.hmdp.service;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.hmdp.entity.Blog;
 import com.hmdp.dto.Result;
+
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+
 /**
  * <p>
  *  服务类
@@ -16,13 +21,16 @@ public interface IBlogService extends IService<Blog> {
 
     Result queryBlogById(Long id);
 
-    Result likeBlog(Long id);
+    Result likeBlog(Blog blog);
 
-    Result queryBlogLikes(Long id);
+
 
     Result saveBlog(Blog blog);
 
     Result queryBlogOfFollow(Long max, Integer offset);
 
-    Result queryBlogLikesById(Long id);
+
+    CompletableFuture<Void> updateBatchCount(List<Blog> likeBlogCountList);
+
+    Map<Long, Integer> queryBatchCount(List<Long> blogIds);
 }
