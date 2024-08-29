@@ -18,12 +18,11 @@ import com.hmdp.mapper.BlogMapper;
 import com.hmdp.service.IBlogService;
 import com.hmdp.service.IFollowService;
 import com.hmdp.service.IUserService;
-import com.hmdp.utils.RedisConstants;
-import com.hmdp.utils.RedisIdWorker;
-import com.hmdp.utils.SystemConstants;
-import com.hmdp.utils.UserHolder;
+import com.hmdp.utils.*;
 import jdk.jpackage.internal.Log;
 import net.bytebuddy.description.field.FieldDescription;
+import org.springframework.data.redis.connection.ReactiveZSetCommands;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.scheduling.annotation.Async;
@@ -34,14 +33,14 @@ import com.github.benmanes.caffeine.cache.LoadingCache;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static com.hmdp.utils.KafkaConstants.TOPIC_LIKE_BEHAVIOR;
-import static com.hmdp.utils.RedisConstants.BLOG_LIKED_KEY;
-import static com.hmdp.utils.RedisConstants.FEED_KEY;
+import static com.hmdp.utils.RedisConstants.*;
 
 /**
  * <p>
@@ -70,6 +69,12 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 
     @Resource
     private LoadingCache<String,String> cache;
+
+    @Resource
+    private BloomFilter bloomFilter;
+
+    @Resource
+    private RedisTemplate redisTemplate;
 
     @PostConstruct
     public LoadingCache<String,String> init(){
@@ -162,10 +167,63 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
                 stringRedisTemplate.opsForZSet().remove(key, userId.toString());
             }
         }
+        int diff = type == 1?1:-1;
+
+        updateLocalCache(blogId,diff);
+        updateRedis(blogId,userId,diff);
+
         Long likedId = redisIdWorker.nextId("like_behavior");
+
         sendLikeBehaviorMsg(likedId,blogId,userId,type);
 
         return Result.ok();
+    }
+
+    private void updateRedis(Long blogId,Long userId,int diff){
+        updateRedisZset(blogId, userId, diff);
+        //  更新文章的点赞计数
+        String articleLikeCountKey = Blog_LIKE_COUNT + blogId;
+        String count = stringRedisTemplate.opsForValue().get(articleLikeCountKey);
+
+        if (count == null) {
+            // 如果 Redis 中没有相关数据
+            if (diff == 1) {
+                // 并且本次是点赞操作，先暂时把它存为 1
+                redisTemplate.opsForValue().set(articleLikeCountKey, "1");
+            }
+            // 如果本次是取消赞操作，先不做任何处理
+        } else {
+            // 如果 Redis 中有相关数据，直接更新值
+            int newCount = Integer.parseInt(count) + diff;
+            if (newCount < 0) {
+                log.error("文章获赞总数数据异常，准备删除异常的 Redis 数据...");
+                redisTemplate.delete(articleLikeCountKey);
+                log.error("异常数据删除成功！");
+            } else {
+                redisTemplate.opsForValue().set(articleLikeCountKey, String.valueOf(newCount));
+            }
+        }
+    }
+
+    private void updateRedisZset(Long blogId, Long userId, int diff) {
+        if(diff==1) {
+            double score = Instant.now().getEpochSecond();
+            if (!redisTemplate.opsForZSet().add(BLOG_LIKED_KEY + blogId, userId, score)){
+                log.error("添加点赞到zset失败");
+                redisTemplate.delete(BLOG_LIKED_KEY+blogId);
+                return;
+        }
+
+        }
+    }
+
+    private void updateLocalCache(Long blogId,int diff){
+        Integer blogCount = Integer.valueOf(cache.get(BLOG_LIKED_KEY + blogId));
+        if(blogCount!=null)
+        {
+            cache.put(BLOG_LIKED_KEY+blogId,String.valueOf(blogCount+diff));
+        }
+
     }
 
     private void sendLikeBehaviorMsg(Long likedId,Long blogId,Long userId,Integer type){
@@ -181,6 +239,25 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         kafkaLikeProducer.publishEvent(event);
     }
 
+    private boolean isLike(Long blogId, Long userId){
+        if(!bloomFilter.isExist(BLOOM_FILTER,blogId.toString(),userId.toString())){
+            return false;
+        }
+        if ((redisTemplate.opsForZSet().score(USER_LIKE_KEY + userId, blogId.toString()) != null)
+                || (redisTemplate.opsForZSet().score(USER_LIKE_KEY + blogId, userId.toString()) != null)) {
+            return true;
+        }
+        Blog one = this.getOne(new LambdaQueryWrapper<Blog>()
+                .eq(Blog::getBlogId,blogId)
+                .eq(Blog::getUserId,userId)
+                .orderByDesc(Blog::getCreateTime)
+                .last("LIMIT 1"));
+
+        if(one!=null&&one.getType()==1){
+            return true;
+        }
+        return false;
+    }
 
     @Override
     public Result saveBlog(Blog blog) {
