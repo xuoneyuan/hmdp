@@ -1,6 +1,5 @@
 package com.hmdp.event;
 
-import cn.hutool.core.lang.hash.Hash;
 import com.alibaba.fastjson.JSONObject;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.Event;

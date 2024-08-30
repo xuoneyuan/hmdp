@@ -1,8 +1,10 @@
 package com.hmdp.controller;
 
-
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import com.hmdp.entity.BlogComments;
+import com.hmdp.dto.Result;
+import org.springframework.web.bind.annotation.*;
+import com.hmdp.service.IBlogCommentsService;
+import javax.annotation.Resource;
 
 /**
  * <p>
@@ -15,5 +17,20 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/blog-comments")
 public class BlogCommentsController {
+
+    @Resource
+    private IBlogCommentsService blogCommentsService;
+
+    @PostMapping
+    public Result addComment(@RequestBody BlogComments blogComments){
+        return blogCommentsService.addComment(blogComments);
+    }
+
+    @GetMapping("/query/comment/{blogId}")
+    public Result queryCommentsByBlog(@PathVariable("blogId") Long blogId,
+                                      @RequestParam(value = "current",defaultValue = "1")Integer current){
+        return blogCommentsService.queryCommentsByBlog(blogId,current);
+    }
+
 
 }

@@ -130,7 +130,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         // 2.判断当前登录用户是否已经点赞
         String key = "blog:liked:" + blog.getId();
         Double score = stringRedisTemplate.opsForZSet().score(key, userId.toString());
-        //blog.setType();
+        blog.setType(null);
     }
 
 
@@ -212,8 +212,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
                 log.error("添加点赞到zset失败");
                 redisTemplate.delete(BLOG_LIKED_KEY+blogId);
                 return;
-        }
-
+            }
         }
     }
 
